@@ -21,7 +21,6 @@ import (
 	"google.golang.org/grpc/keepalive"
 )
 
-
 var (
 	schedulerAddr = flag.String("scheduler", "", "scheduler address")
 	storeAddr     = flag.String("addr", "", "store address")
