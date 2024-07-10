@@ -62,6 +62,10 @@ Solution: raft的min函数只能处理uint64类型,Lastindex为0时，减1会发
 
 ![](project2A.assets/QQ截图20240710071758.png)
 
+![](project2A.assets/QQ截图20240710072139.png)
+
+![](project2A.assets/QQ截图20240710072225.png)
+
 ## 相关代码
 
 

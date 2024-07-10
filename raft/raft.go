@@ -18,7 +18,7 @@ import (
 	"errors"
 	pb "github.com/pingcap-incubator/tinykv/proto/pkg/eraftpb"
 
-	"fmt"
+	//"fmt"
 	rand2 "math/rand"
 	"sort"
 	"time"
@@ -247,7 +247,7 @@ func newRaft(c *Config) *Raft {
 // current commit index to the given peer. Returns true if a message was sent.
 // 发送附加日志条目（如果有的话）和当前的提交索引给指定的节点。如果发送了消息，则返回 true。
 func (r *Raft) sendAppend(to uint64) bool {
-	fmt.Println("sendAppend used!") // debug
+	//fmt.Println("sendAppend used!") // debug
 	// Your Code Here (2A).
 	preLogIndex := r.Prs[to].Next - 1
 	//fmt.Println("sendAppend used Term!")
@@ -332,7 +332,7 @@ func (r *Raft) tick() {
 // becomeFollower transform this peer's state to Follower
 // 将此节点的状态转换为 Follower
 func (r *Raft) becomeFollower(term uint64, lead uint64) {
-	fmt.Println("becomeFollower used!") // debug
+	//fmt.Println("becomeFollower used!") // debug
 	// Your Code Here (2A).
 	if term > r.Term {
 		r.Vote = None
@@ -352,7 +352,7 @@ func (r *Raft) becomeFollower(term uint64, lead uint64) {
 // becomeCandidate transform this peer's state to candidate
 // 将此节点的状态转换为 Candidate
 func (r *Raft) becomeCandidate() {
-	fmt.Println("becomeCandidate used!") // debug
+	//fmt.Println("becomeCandidate used!") // debug
 	// Your Code Here (2A).
 	r.State = StateCandidate
 	r.Term = r.Term + 1
@@ -492,18 +492,21 @@ func (r *Raft) handleStartElection(m pb.Message) {
 
 // 节点收到 RequestVote 请求时候的处理
 func (r *Raft) handleRequestVote(m pb.Message) {
-	fmt.Println("handleRequestVote used!") // debug
+	//fmt.Println("handleRequestVote used!") // debug
 	message := pb.Message{
 		MsgType: pb.MessageType_MsgRequestVoteResponse,
 		To:      m.From,
 		From:	 r.id,
 		Term:    r.Term,
-		Reject:  false,
+		//Reject:  false,
 	}
 	// 投票条件
 	// 1. Candidate 任期大于自己并且日志足够新
 	// 2. Candidate 任期和自己相等并且自己在当前任期内没有投过票或者已经投给了 Candidate，并且 Candidate 的日志足够新
-	if (m.Term > r.Term) ||  ( (m.Term == r.Term && (r.Vote == None || r.Vote == m.From)) && ( m.LogTerm > r.RaftLog.LastTerm() || m.Index >= r.RaftLog.LastIndex() ) ) {
+	if m.Term > r.Term {
+		r.becomeFollower(m.Term,None)
+	}
+	if ( (m.Term > r.Term) ||  (m.Term == r.Term && (r.Vote == None || r.Vote == m.From)) ) && ( m.LogTerm > r.RaftLog.LastTerm() || m.LogTerm == r. RaftLog.LastTerm() && m.Index >= r.RaftLog.LastIndex() )  {
 		r.becomeFollower(m.Term,None)
 		r.Vote = m.From
 	} else {
@@ -512,14 +515,17 @@ func (r *Raft) handleRequestVote(m pb.Message) {
 	}
 
 	r.msgs = append(r.msgs, message)
+
 }
 
 // handleRequestVoteResponse 节点收到 RequestVoteResponse 时候的处理
 func (r *Raft) handleRequestVoteResponse(m pb.Message) {
-	fmt.Println("handleRequestVoteResponse used!") // debug
+	//fmt.Println("handleRequestVoteResponse used!") // debug
 	// 投的赞成票
 	if m.Reject == false {
 		r.votes[m.From] = true
+	} else {
+		r.votes[m.From] = false
 	}
 
 	voteCount := 0 // 记录收集了多少赞成票
@@ -601,7 +607,7 @@ func (r *Raft) handlePropose(m pb.Message) {
 // handleAppendEntries handle AppendEntries RPC request
 // 处理同步日志条目
 func (r *Raft) handleAppendEntries(m pb.Message) {
-	fmt.Println("handleAppendEntries used!") // debug
+	//fmt.Println("handleAppendEntries used!") // debug
 	// Your Code Here (2A).
 	responseMessage := pb.Message{
 		MsgType: pb.MessageType_MsgAppendResponse,
@@ -622,55 +628,63 @@ func (r *Raft) handleAppendEntries(m pb.Message) {
 	r.becomeFollower(m.Term,m.From)
 
 	//fmt.Println("handleAppendEntries used Term!")
-	preTerm, _ := r.RaftLog.Term(preLogIndex)
+	//var preTerm uint64 = 0
+	//if preLogIndex <= r.RaftLog.LastIndex() {
+	//	preTerm, _ = r.RaftLog.Term(preLogIndex)
+	//}
+
 	// 检验之前同步的日志是否冲突，已经同步的日志和对方并不匹配(Index不一样或者Term不一样)
-	if preLogIndex > r.RaftLog.LastIndex() || preLogTerm != preTerm  { // 不包含上一条同步的日志
+	if preLogIndex > r.RaftLog.LastIndex() {
 		responseMessage.Index = r.RaftLog.LastIndex()
-		if preLogTerm != preTerm {
-			// 如果任期不一致，尝试上一个任期的最后一个条目
-			for _, entry := range r.RaftLog.entries {
-				if entry.Term == preTerm {
-					responseMessage.Index = entry.Index - 1
-					break
-				}
-			}
-		}
 	} else {
-		if len(m.Entries) > 0 {
-			idx := m.Index + 1
-			lenEntries := len(m.Entries)
-			isConflict := false
-			for ; idx < r.RaftLog.LastIndex() && idx <= m.Entries[lenEntries - 1].Index; idx++ {
-				//fmt.Println("Line644 used Term!") // debug
-				curTerm, _ := r.RaftLog.Term(idx)
-				if curTerm != m.Entries[idx - m.Index - 1].Term {
-					isConflict = true
+		preTerm, _ := r.RaftLog.Term(preLogIndex)
+		if preTerm != preLogTerm {
+			responseMessage.Index = r.RaftLog.LastIndex()
+			for _, ent := range r.RaftLog.entries {
+				if ent.Term == preTerm {
+					//找到冲突任期的上一个任期的idx位置
+					responseMessage.Index = ent.Index - 1
 					break
 				}
 			}
-
-			if isConflict == true {
-				// 当前条目在idx位置出现冲突
-
-				// 冲突位置后面的条目均舍弃
-				if len(r.RaftLog.entries) > 0 {
-					r.RaftLog.entries = r.RaftLog.entries[ : idx - r.RaftLog.dummyIndex]
+		}
+		if preLogTerm == preTerm {
+			if len(m.Entries) > 0 {
+				idx := m.Index + 1
+				lenEntries := len(m.Entries)
+				//isConflict := false
+				for ; idx < r.RaftLog.LastIndex() && idx <= m.Entries[lenEntries-1].Index; idx++ {
+					//fmt.Println("Line644 used Term!") // debug
+					curTerm, _ := r.RaftLog.Term(idx)
+					if curTerm != m.Entries[idx-m.Index-1].Term {
+						//isConflict = true
+						break
+					}
 				}
-				// 强行与对方(Leader)同步，也就是强行添加idx之后的日志
-				r.RaftLog.appendEntry(m.Entries[idx - m.Index - 1 : ])
-				r.RaftLog.stabled = min(r.RaftLog.stabled,idx - 1)
+
+				if idx - m.Index - 1 != uint64(len(m.Entries)) {
+					// 当前条目在idx位置出现冲突
+
+					// 冲突位置后面的/条目均舍弃
+					if len(r.RaftLog.entries) > 0 {
+						r.RaftLog.entries = r.RaftLog.entries[:idx-r.RaftLog.dummyIndex]
+					}
+					// 强行与对方(Leader)同步，也就是强行添加idx之后的日志
+					r.RaftLog.appendEntry(m.Entries[idx-m.Index-1:])
+					r.RaftLog.stabled = min(r.RaftLog.stabled, idx-1)
+				}
 			}
-		}
 
-		// 更新commitIndex
-		if m.Commit > r.RaftLog.committed {
-			r.RaftLog.committed = min(m.Commit, m.Index + uint64(len(m.Entries)))
-		}
+			// 更新commitIndex
+			if m.Commit > r.RaftLog.committed {
+				r.RaftLog.committed = min(m.Commit, m.Index+uint64(len(m.Entries)))
+			}
 
-		//同意同步请求
-		responseMessage.Reject = false
-		responseMessage.Index = m.Index + uint64(len(m.Entries))
-		responseMessage.LogTerm, _ = r.RaftLog.Term(responseMessage.Index)
+			//同意同步请求
+			responseMessage.Reject = false
+			responseMessage.Index = m.Index + uint64(len(m.Entries))
+			responseMessage.LogTerm, _ = r.RaftLog.Term(responseMessage.Index)
+		}
 	}
 
 	r.msgs = append(r.msgs, responseMessage)
@@ -679,7 +693,7 @@ func (r *Raft) handleAppendEntries(m pb.Message) {
 
 // handleAppendEntriesResponse Leader节点收到 AppendEntriesResponse 的处理
 func (r *Raft) handleAppendEntriesResponse(m pb.Message) {
-	fmt.Println("handleAppendEntriesResponse used!") // debug
+	// fmt.Println("handleAppendEntriesResponse used!") // debug
 	if m.Reject == true { // 拒绝同步
 		if m.Term > r.Term { // 对方任期大于自己，自己无法成为Leader了
 			r.becomeFollower(m.Term, None)
@@ -722,7 +736,7 @@ func (r *Raft) handleCommit() bool {
 // handleHeartbeat handle Heartbeat RPC request
 // 处理心跳包请求
 func (r *Raft) handleHeartbeat(m pb.Message) {
-	fmt.Println("handleHeartbeat used!") // debug
+	// fmt.Println("handleHeartbeat used!") // debug
 	// Your Code Here (2A).
 	message := pb.Message{
 		MsgType: pb.MessageType_MsgHeartbeatResponse,
@@ -743,6 +757,7 @@ func (r *Raft) handleHeartbeat(m pb.Message) {
 
 	r.msgs = append(r.msgs, message)
 }
+
 
 // handleSnapshot handle Snapshot RPC request
 func (r *Raft) handleSnapshot(m pb.Message) {

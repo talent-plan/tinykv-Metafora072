@@ -144,9 +144,9 @@ func (l *RaftLog) LastTerm() uint64 {
 func (l *RaftLog) Term(i uint64) (uint64, error) {
 	// Your Code Here (2A).
 	//fmt.Println("log.go.Term used!") // debug
-	if i >= uint64(len(l.entries)) {
-		return None,nil
-	}
+	//if i >= uint64(len(l.entries)) {
+	//	return None,nil
+	//}
 	//fmt.Println(i,len(l.entries)) // debug
 	if i >= l.dummyIndex {
 		return l.entries[i - l.dummyIndex].Term, nil
@@ -172,3 +172,9 @@ func (l *RaftLog) handleCommit(idx uint64,term uint64) bool {
 	}
 	return false
 }
+
+// 选举限制
+func (l *RaftLog) isUpToDate(index, term uint64) bool {
+	return term > l.LastTerm() || (term == l.LastTerm() && index >= l.LastIndex())
+}
+
