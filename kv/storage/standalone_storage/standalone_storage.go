@@ -5,8 +5,8 @@ import (
 	"github.com/pingcap-incubator/tinykv/kv/storage"
 	"github.com/pingcap-incubator/tinykv/proto/pkg/kvrpcpb"
 
-	"github.com/pingcap-incubator/tinykv/kv/util/engine_util"
 	"github.com/Connor1996/badger"
+	"github.com/pingcap-incubator/tinykv/kv/util/engine_util"
 	"log"
 )
 
@@ -84,12 +84,7 @@ type BadgerReader struct {
 }
 
 
-// type StorageReader interface {
-// 	// When the key doesn't exist, return nil for the value
-// 	GetCF(cf string, key []byte) ([]byte, error)
-// 	IterCF(cf string) engine_util.DBIterator
-// 	Close()
-// }
+
 func (br *BadgerReader) GetCF(cf string, key []byte) ([]byte, error) {
 	//func GetCFFromTxn(txn *badger.Txn, cf string, key []byte) (val []byte, err error)
 	value, err := engine_util.GetCFFromTxn(br.txn,cf,key)
