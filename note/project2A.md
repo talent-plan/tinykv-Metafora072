@@ -66,9 +66,11 @@ Solution: raft的min函数只能处理uint64类型,Lastindex为0时，减1会发
 
 ![](project2A.assets/QQ截图20240710072225.png)
 
+`handleRequestVoteResponse`中为什么这个需要？
+
+![](project2A.assets/QQ截图20240710101323.png)
+
 ## 相关代码
-
-
 
 `raft/log.go`中 **RaftLog** 结构体：
 

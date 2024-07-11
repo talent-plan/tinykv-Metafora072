@@ -173,8 +173,5 @@ func (l *RaftLog) handleCommit(idx uint64,term uint64) bool {
 	return false
 }
 
-// 选举限制
-func (l *RaftLog) isUpToDate(index, term uint64) bool {
-	return term > l.LastTerm() || (term == l.LastTerm() && index >= l.LastIndex())
-}
+
 
