@@ -258,12 +258,14 @@ func (rn *RawNode) Advance(rd Ready) {
 	}
 
 	// 更新 RaftLog 状态
-	if len(rd.Entries) > 0 {
-		rn.Raft.RaftLog.stabled += uint64(len(rd.Entries))
-	}
-	if len(rd.CommittedEntries) > 0 {
-		rn.Raft.RaftLog.applied += uint64(len(rd.CommittedEntries))
-	}
+	rn.Raft.RaftLog.stabled += uint64(len(rd.Entries))
+	rn.Raft.RaftLog.applied += uint64(len(rd.CommittedEntries))
+	//if len(rd.Entries) > 0 {
+	//	rn.Raft.RaftLog.stabled += uint64(len(rd.Entries))
+	//}
+	//if len(rd.CommittedEntries) > 0 {
+	//	rn.Raft.RaftLog.applied += uint64(len(rd.CommittedEntries))
+	//}
 	rn.Raft.msgs = nil
 	// Snap
 

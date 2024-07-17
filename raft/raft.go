@@ -329,9 +329,15 @@ func (r *Raft) tick() {
 	}
 }
 
+//var followernum uint64 = 0
+//var leadernum uint64 = 0
+
 // becomeFollower transform this peer's state to Follower
 // 将此节点的状态转换为 Follower
 func (r *Raft) becomeFollower(term uint64, lead uint64) {
+	//if r.State == StateLeader {
+	//	leadernum--
+	//}
 	//fmt.Println("becomeFollower used!") // debug
 	// Your Code Here (2A).
 	if term > r.Term {
@@ -352,6 +358,9 @@ func (r *Raft) becomeFollower(term uint64, lead uint64) {
 // becomeCandidate transform this peer's state to candidate
 // 将此节点的状态转换为 Candidate
 func (r *Raft) becomeCandidate() {
+	//if r.State == StateLeader {
+	//	leadernum--
+	//}
 	//fmt.Println("becomeCandidate used!") // debug
 	// Your Code Here (2A).
 	r.State = StateCandidate
@@ -371,6 +380,10 @@ func (r *Raft) becomeCandidate() {
 // becomeLeader transform this peer's state to leader
 // 将此节点的状态转换为 Leader
 func (r *Raft) becomeLeader() {
+	//if r.State != StateLeader {
+	//	leadernum++
+	//}
+	//fmt.Println("LeaderNum: ", leadernum)
 	// Your Code Here (2A).
 	// NOTE: Leader should propose a noop entry on its term
 	//fmt.Println("becomeLeader used!") // debug
@@ -677,7 +690,7 @@ func (r *Raft) handleAppendEntries(m pb.Message) {
 
 			// 更新commitIndex
 			if m.Commit > r.RaftLog.committed {
-				r.RaftLog.committed = min(m.Commit, m.Index+uint64(len(m.Entries)))
+				r.RaftLog.committed = min(m.Commit, m.Index + uint64(len(m.Entries)))
 			}
 
 			//同意同步请求
@@ -727,8 +740,8 @@ func (r *Raft) handleCommit() bool {
 	}
 	// 获取所有节点 match 的中位数，就是被大多数节点复制的日志索引
 	sort.Sort(sort.Reverse(matchArr))
-	majority := len(r.Prs) / 2 + 1
-	canCommitIndex := matchArr[majority - 1]
+	midIdx := len(r.Prs) / 2 + 1
+	canCommitIndex := matchArr[midIdx - 1]
 	// 处理提交 canCommitIndex
 	return r.RaftLog.handleCommit(canCommitIndex, r.Term)
 }
