@@ -82,6 +82,36 @@ project2b:
 	$(GOTEST) ./kv/test_raftstore -run ^TestPersistPartition2B$ || true
 	$(GOTEST) ./kv/test_raftstore -run ^TestPersistPartitionUnreliable2B$ || true
 	$(TEST_CLEAN)
+#project2b:
+#	$(TEST_CLEAN)
+#	$(GOTEST) -v ./kv/test_raftstore -run ^TestBasic2B$ | grep PASS || true
+#	$(GOTEST) -v ./kv/test_raftstore -run ^TestConcurrent2B$ | grep PASS || true
+#	$(GOTEST) -v ./kv/test_raftstore -run ^TestUnreliable2B$ | grep PASS || true
+#	$(GOTEST) -v ./kv/test_raftstore -run ^TestOnePartition2B$ | grep PASS || true
+#	$(GOTEST) -v ./kv/test_raftstore -run ^TestManyPartitionsOneClient2B$ | grep PASS || true
+#	$(GOTEST) -v ./kv/test_raftstore -run ^TestManyPartitionsManyClients2B$ | grep PASS || true
+#	$(GOTEST) -v ./kv/test_raftstore -run ^TestPersistOneClient2B$ | grep PASS || true
+#	$(GOTEST) -v ./kv/test_raftstore -run ^TestPersistConcurrent2B$ | grep PASS || true
+#	$(GOTEST) -v ./kv/test_raftstore -run ^TestPersistConcurrentUnreliable2B$ | grep PASS || true
+#	$(GOTEST) -v ./kv/test_raftstore -run ^TestPersistPartition2B$ | grep PASS || true
+#	$(GOTEST) -v ./kv/test_raftstore -run ^TestPersistPartitionUnreliable2B$ | grep PASS || true
+#	$(TEST_CLEAN)
+#project2b:
+#	$(TEST_CLEAN)
+#	$(GOTEST) -v ./kv/test_raftstore -run ^TestBasic2B$ | grep -E "PASS|ok|FAIL" || true
+#	$(GOTEST) -v ./kv/test_raftstore -run ^TestConcurrent2B$ | grep -E "PASS|ok|FAIL" || true
+#	$(GOTEST) -v ./kv/test_raftstore -run ^TestUnreliable2B$ | grep -E "PASS|ok|FAIL" || true
+#	$(GOTEST) -v ./kv/test_raftstore -run ^TestOnePartition2B$ | grep -E "PASS|ok|FAIL" || true
+#	$(GOTEST) -v ./kv/test_raftstore -run ^TestManyPartitionsOneClient2B$ | grep -E "PASS|ok|FAIL" || true
+#	$(GOTEST) -v ./kv/test_raftstore -run ^TestManyPartitionsManyClients2B$ | grep -E "PASS|ok|FAIL" || true
+#	$(GOTEST) -v ./kv/test_raftstore -run ^TestPersistOneClient2B$ | grep -E "PASS|ok|FAIL" || true
+#	$(GOTEST) -v ./kv/test_raftstore -run ^TestPersistConcurrent2B$ | grep -E "PASS|ok|FAIL" || true
+#	$(GOTEST) -v ./kv/test_raftstore -run ^TestPersistConcurrentUnreliable2B$ | grep -E "PASS|ok|FAIL" || true
+#	$(GOTEST) -v ./kv/test_raftstore -run ^TestPersistPartition2B$ | grep -E "PASS|ok|FAIL" || true
+#	$(GOTEST) -v ./kv/test_raftstore -run ^TestPersistPartitionUnreliable2B$ | grep -E "PASS|ok|FAIL" || true
+#	$(TEST_CLEAN)
+
+
 
 project2c:
 	$(TEST_CLEAN)
@@ -92,6 +122,20 @@ project2c:
 	$(GOTEST) ./kv/test_raftstore -run ^TestSnapshotUnreliable2C$ || true
 	$(GOTEST) ./kv/test_raftstore -run ^TestSnapshotUnreliableRecover2C$ || true
 	$(GOTEST) ./kv/test_raftstore -run ^TestSnapshotUnreliableRecoverConcurrentPartition2C$ || true
+	$(TEST_CLEAN)
+
+project2c_SnapshotRecover:
+	$(TEST_CLEAN)
+	$(GOTEST) ./kv/test_raftstore -run ^TestSnapshotRecover2C$ || true
+	$(TEST_CLEAN)
+
+project2c_TestSnapshotUnreliable5Times:
+	$(TEST_CLEAN)
+	$(GOTEST) ./kv/test_raftstore -run ^TestSnapshotUnreliable2C$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^TestSnapshotUnreliable2C$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^TestSnapshotUnreliable2C$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^TestSnapshotUnreliable2C$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^TestSnapshotUnreliable2C$ || true
 	$(TEST_CLEAN)
 
 project3: project3a project3b project3c

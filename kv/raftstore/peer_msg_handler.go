@@ -5,6 +5,7 @@ import (
 	"github.com/pingcap-incubator/tinykv/kv/raftstore/meta"
 	"github.com/pingcap-incubator/tinykv/kv/util/engine_util"
 	pb "github.com/pingcap-incubator/tinykv/proto/pkg/eraftpb"
+	"reflect"
 	"time"
 
 	"github.com/Connor1996/badger/y"
@@ -57,9 +58,27 @@ func (d *peerMsgHandler) HandleRaftReady() {
 	ready := d.RaftGroup.Ready()
 
 	// 调用 SaveReadyState 将 Ready 中需要持久化的内容保存到 badger
-	_, err := d.peerStorage.SaveReadyState(&ready)
+	applySnapResult, err := d.peerStorage.SaveReadyState(&ready)
 	if err != nil {
 		log.Panic(err)
+	}
+
+	if applySnapResult != nil { // 存在快照，则应用这个快照
+		if reflect.DeepEqual(applySnapResult.Region,applySnapResult.PrevRegion) == false {
+			d.peerStorage.SetRegion(applySnapResult.Region)
+
+			storeMeta := d.ctx.storeMeta
+
+			storeMeta.Lock()
+			storeMeta.regions[applySnapResult.Region.Id] = applySnapResult.Region
+			storeMeta.regionRanges.Delete(&regionItem{
+				region: applySnapResult.PrevRegion,
+			})
+			storeMeta.regionRanges.ReplaceOrInsert(&regionItem{
+				region: applySnapResult.Region,
+			})
+			storeMeta.Unlock()
+		}
 	}
 
 	// 调用 d.Send() 方法将 Ready 中的 Msg 发送出去
@@ -105,22 +124,25 @@ func (d *peerMsgHandler) HandleRaftReady() {
 	d.RaftGroup.Advance(ready)
 }
 
+
 func (d *peerMsgHandler) processCommittedEntry(entry *pb.Entry,writeBatch *engine_util.WriteBatch) *engine_util.WriteBatch {
 	//fmt.Println("processCommittedEntry called!")
 	//EntryType_EntryNormal (值为 0): 这种类型表示普通的日志条目，通常用于存储客户端的请求或命令。这些命令会被应用到状态机中，以保持集群的一致性。
 	//EntryType_EntryConfChange (值为 1): 这种类型表示配置变更日志条目，用于集群配置的更改，例如添加或删除节点。当这种类型的条目被提交时，Raft 节点会应用配置变更，以更新集群的成员信息。
 
-	if entry.EntryType == pb.EntryType_EntryConfChange { // 日志条目是配置变更条目
-		confChange := &pb.ConfChange{}
+	// Project3 TODO
+	//if entry.EntryType == pb.EntryType_EntryConfChange { // 日志条目是配置变更条目
+	//	confChange := &pb.ConfChange{}
+	//
+	//	err := confChange.Unmarshal(entry.Data)
+	//	if err != nil {
+	//		log.Panic(err)
+	//	}
+	//	log.Infof("EntryType_EntryConfChange")
+	//
+	//	return d.processConfChange(entry,confChange,writeBatch)
+	//}
 
-		err := confChange.Unmarshal(entry.Data)
-		if err != nil {
-			log.Panic(err)
-		}
-		log.Infof("EntryType_EntryConfChange")
-
-		return d.processConfChange(entry,confChange,writeBatch)
-	}
 	// 反序列化 entry.Data 中的数据
 	request := &raft_cmdpb.RaftCmdRequest{}
 
@@ -128,15 +150,17 @@ func (d *peerMsgHandler) processCommittedEntry(entry *pb.Entry,writeBatch *engin
 	if err != nil {
 		log.Panic(err)
 	}
-	// TODO
-	//if request.AdminRequest != nil {
-	//	// return d.processAdminRequest(entry, requests, kvWB)
-	//} else {
-	//	return d.processRequest(entry, request, writeBatch)
-	//}
 
-	return d.processRequest(entry, request, writeBatch)
+	if request.AdminRequest != nil {
+		return d.processAdminRequest(entry, request, writeBatch)
+	} else {
+		return d.processRequest(entry, request, writeBatch)
+	}
+
+
 }
+
+
 
 // processConfChange 处理配置变更类型的日志条目
 func (d *peerMsgHandler) processConfChange(entry *pb.Entry,confChange *pb.ConfChange,writeBatch *engine_util.WriteBatch) *engine_util.WriteBatch {
@@ -191,6 +215,23 @@ func (d *peerMsgHandler) getPeerIndex(nodeId uint64) uint64 {
 	return uint64(len(d.peerStorage.region.Peers))
 }
 
+// processAdminRequest 处理 commit 的 Admin Request 类型 command
+func (d *peerMsgHandler) processAdminRequest(entry *pb.Entry,request *raft_cmdpb.RaftCmdRequest,writeBatch *engine_util.WriteBatch) *engine_util.WriteBatch {
+	switch request.AdminRequest.CmdType {
+	case raft_cmdpb.AdminCmdType_InvalidAdmin:
+		break
+	case raft_cmdpb.AdminCmdType_CompactLog: // CompactLog 类型请求不需要将执行结果存储到 proposal 回调????
+		if request.AdminRequest.CompactLog.CompactIndex > d.peerStorage.applyState.TruncatedState.Index {
+			d.peerStorage.applyState.TruncatedState.Index = request.AdminRequest.CompactLog.CompactIndex
+			d.peerStorage.applyState.TruncatedState.Term = request.AdminRequest.CompactLog.CompactTerm
+			// 调度日志截断任务
+			d.ScheduleCompactLog(request.AdminRequest.CompactLog.CompactIndex)
+		}
+	// TODO other cases: AdminCmdType_ChangePeer、AdminCmdType_TransferLeader、AdminCmdType_Split
+	}
+
+	return writeBatch
+}
 // processRequest 处理 commit 的 Put/Get/Delete/Snap 类型 command
 func (d *peerMsgHandler) processRequest(entry *pb.Entry,request *raft_cmdpb.RaftCmdRequest,writeBatch *engine_util.WriteBatch) *engine_util.WriteBatch {
 	raftCmdResponse := &raft_cmdpb.RaftCmdResponse{
@@ -287,7 +328,7 @@ func (d *peerMsgHandler) processRequest(entry *pb.Entry,request *raft_cmdpb.Raft
 				BindRespError(raftCmdResponse,err)
 				continue
 			}
-			// Get 和 Snap 请求需要先将结果写到 DB，否 则的话如果有多个 entry 同时被 apply，客户端无法及时看到写入的结果 ??
+			// Get 和 Snap 请求需要先将结果写到 DB，否则的话如果有多个 entry 同时被 apply，客户端无法及时看到写入的结果 ??
 			writeBatch.MustWriteToDB(d.peerStorage.Engines.Kv)
 			writeBatch = &engine_util.WriteBatch{}
 			/*
@@ -300,9 +341,8 @@ func (d *peerMsgHandler) processRequest(entry *pb.Entry,request *raft_cmdpb.Raft
 			 */
 			raftCmdResponse.Responses = append(raftCmdResponse.Responses, &raft_cmdpb.Response{
 				CmdType: raft_cmdpb.CmdType_Snap,
-				Snap: &raft_cmdpb.SnapResponse{Region: d.Region()},
+				Snap:    &raft_cmdpb.SnapResponse{Region: d.Region()},
 			})
-			// Snap TODO
 		}
 	}
 
@@ -327,12 +367,24 @@ func (d *peerMsgHandler) processProposal(entry *pb.Entry, raftCmdResponse *raft_
 			}
 			curProposal.cb.Done(raftCmdResponse)
 			d.proposals = d.proposals[1:]
-			continue
+
 		}
 
 		return
 	}
+	//plen := len(d.proposals)
+	//for idx := 0; idx < plen; idx++ {
+	//	curProposal := d.proposals[idx]
+	//	if curProposal.term == entry.Term && curProposal.index == entry.Index {
+	//		if curProposal.cb != nil {
+	//			curProposal.cb.Txn = d.peerStorage.Engines.Kv.NewTransaction(false)
+	//		}
+	//		curProposal.cb.Done(raftCmdResponse)
+	//		return
+	//	}
+	//}
 }
+
 
 func (d *peerMsgHandler) HandleMsg(msg message.Msg) {
 	switch msg.Type {
@@ -396,6 +448,9 @@ func (d *peerMsgHandler) preProposeRaftCommand(req *raft_cmdpb.RaftCmdRequest) e
 	return err
 }
 
+
+
+
 //将 client 的请求包装成 entry 传递给 raft 层
 func (d *peerMsgHandler) proposeRaftCommand(msg *raft_cmdpb.RaftCmdRequest, cb *message.Callback) {
 	err := d.preProposeRaftCommand(msg)
@@ -404,7 +459,7 @@ func (d *peerMsgHandler) proposeRaftCommand(msg *raft_cmdpb.RaftCmdRequest, cb *
 		return
 	}
 	// Your Code Here (2B).
-	if msg.Requests != nil {
+	if msg.Requests != nil { // 普通请求
 		// 封装回调函数 callback
 		curProposal := &proposal{
 			index: d.RaftGroup.Raft.RaftLog.LastIndex() + 1,
@@ -425,8 +480,19 @@ func (d *peerMsgHandler) proposeRaftCommand(msg *raft_cmdpb.RaftCmdRequest, cb *
 		if err != nil {
 			log.Panic(err)
 		}
-	} else {
-		// TODO
+	} else if msg.AdminRequest != nil { // 管理员请求
+		switch msg.AdminRequest.CmdType {
+		case raft_cmdpb.AdminCmdType_CompactLog: // 日志压缩需要提交到 raft 同步
+			marshalRes, err := msg.Marshal()
+			if err != nil {
+				log.Panic(err)
+			}
+			err = d.RaftGroup.Propose(marshalRes)
+			if err != nil {
+				log.Panic(err)
+			}
+		// TODO other cases
+		}
 	}
 
 }

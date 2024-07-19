@@ -273,7 +273,37 @@ func (r *Raft) sendAppend(to uint64) bool {
 		r.msgs = append(r.msgs, appendMessage)
 		return true
 	}
+	// 当 Leader append 日志给落后 node 节点时，发现对方所需要的 entry 已经被 compact。此时 Leader 会发送 Snapshot 过去。
+	r.sendSnapshot(to)
 	return false
+}
+
+// sendSnapshot 发送快照给其它节点(to)
+func (r *Raft) sendSnapshot(to uint64) {
+	// Snapshot 返回最新的快照。
+	// 如果快照暂时不可用，它应该返回 ErrSnapshotTemporarilyUnavailable，
+	// 这样 Raft 状态机就能知道存储需要一些时间来准备快照，并稍后调用 Snapshot。
+	// Snapshot() (pb.Snapshot, error)
+
+	// 节点生成快照
+	snapshot, err := r.RaftLog.storage.Snapshot()
+	if err != nil {
+		//因为 Snapshot 很大，不会马上生成，这里为了避免阻塞，如果 Snapshot 还没有生成好，Snapshot 会先返回 raft.ErrSnapshotTemporarilyUnavailable 错误
+		// Leader 就应该放弃本次 Snapshot，等待下一次再次请求 Snapshot。
+		return
+	}
+
+	message := pb.Message{
+		MsgType:  pb.MessageType_MsgSnapshot,
+		To:		  to,
+		From:     r.id,
+		Term:     r.Term,
+		Snapshot: &snapshot,
+	}
+	r.msgs = append(r.msgs, message)
+
+	// 更新目标节点的 Next 索引
+	r.Prs[to].Next = snapshot.Metadata.Index + 1
 }
 
 // sendHeartbeat sends a heartbeat RPC to the given peer.
@@ -422,6 +452,9 @@ func (r *Raft) Step(m pb.Message) error {
 		case pb.MessageType_MsgHeartbeat:
 			// Leader 发送的心跳
 			r.handleHeartbeat(m)
+		case pb.MessageType_MsgSnapshot:
+			// Leader 将快照发送给其他节点
+			r.handleSnapshot(m)
 		}
 	case StateCandidate:
 		switch m.MsgType {
@@ -440,6 +473,9 @@ func (r *Raft) Step(m pb.Message) error {
 		case pb.MessageType_MsgHeartbeat:
 			// Leader 发送的心跳
 			r.handleHeartbeat(m)
+		case pb.MessageType_MsgSnapshot:
+			// Leader 将快照发送给其他节点
+			r.handleSnapshot(m)
 		}
 	case StateLeader:
 		switch m.MsgType {
@@ -773,8 +809,47 @@ func (r *Raft) handleHeartbeat(m pb.Message) {
 
 
 // handleSnapshot handle Snapshot RPC request
+// handleSnapshot 处理发来的快照请求
 func (r *Raft) handleSnapshot(m pb.Message) {
 	// Your Code Here (2C).
+	responseMessage := pb.Message{
+		MsgType: pb.MessageType_MsgAppendResponse,
+		From:	 r.id,
+		Term:	 r.Term,
+	}
+
+	// 如果对方 term 小于自身的 term 直接拒绝这次快照的数据
+	if m.Term < r.Term {
+		responseMessage.Reject = true
+		r.msgs = append(r.msgs, responseMessage)
+		return
+	}
+	// 如果已经提交的日志大于等于快照中的日志，也需要拒绝这次快照
+	if r.RaftLog.committed >= m.Snapshot.Metadata.Index {
+		responseMessage.Reject = true
+		r.msgs = append(r.msgs, responseMessage)
+		return
+	}
+
+	r.becomeFollower(m.Term, m.From)
+	// 更新日志数据
+	r.RaftLog.committed = m.Snapshot.Metadata.Index
+	r.RaftLog.applied = m.Snapshot.Metadata.Index
+	r.RaftLog.stabled = m.Snapshot.Metadata.Index
+	r.RaftLog.dummyIndex = m.Snapshot.Metadata.Index + 1
+	r.RaftLog.pendingSnapshot = m.Snapshot
+	r.RaftLog.entries = make([]pb.Entry, 0)
+	// 更新集群配置
+	r.Prs = make(map[uint64]*Progress)
+	for _, nodeId := range m.Snapshot.Metadata.ConfState.Nodes {
+		r.Prs[nodeId] = &Progress{
+			Next:	r.RaftLog.LastIndex() + 1,
+		}
+	}
+	responseMessage.Index = m.Snapshot.Metadata.Index
+	responseMessage.Reject = false
+
+	r.msgs = append(r.msgs, responseMessage)
 }
 
 // addNode add a new node to raft group

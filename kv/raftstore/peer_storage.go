@@ -349,8 +349,48 @@ func (ps *PeerStorage) ApplySnapshot(snapshot *eraftpb.Snapshot, kvWB *engine_ut
 	// and send RegionTaskApply task to region worker through ps.regionSched, also remember call ps.clearMeta
 	// and ps.clearExtraData to delete stale data
 	// Your Code Here (2C).
+	// 这里需要做的事情包括：更新对等存储状态，如raftState和applyState等，
+	// 并通过ps.regionSched将RegionTaskApply任务发送给区域工作者，还请记住调用ps.clearMeta
+	// 和ps.clearExtraData删除过时数据
 
-	return nil, nil
+	// 删除过时数据
+	if ps.isInitialized() {
+		err := ps.clearMeta(kvWB,raftWB)
+		if err != nil {
+			log.Panic(err)
+		}
+		ps.clearExtraData(snapData.Region)
+	}
+
+	// 更新 peer_storage 的内存状态
+	ps.raftState.LastIndex = snapshot.Metadata.Index
+	ps.raftState.LastTerm = snapshot.Metadata.Term
+	ps.applyState.AppliedIndex = snapshot.Metadata.Index
+	ps.applyState.TruncatedState.Index = snapshot.Metadata.Index
+	ps.applyState.TruncatedState.Term = snapshot.Metadata.Term
+	ps.snapState.StateType = snap.SnapState_Applying
+
+	err := kvWB.SetMeta(meta.ApplyStateKey(ps.region.Id),ps.applyState)
+	if err != nil {
+		log.Panic(err)
+	}
+
+	// 发送 runner.RegionTaskApply 任务给 region worker，并等待处理完毕
+	ch := make(chan bool, 1)
+	ps.regionSched <- &runner.RegionTaskApply{
+		RegionId: ps.region.Id,
+		Notifier: ch,
+		SnapMeta: snapshot.Metadata,
+		StartKey: snapData.Region.GetStartKey(),
+		EndKey:   snapData.Region.GetEndKey(),
+	}
+	<-ch
+	result := &ApplySnapResult{
+		PrevRegion: ps.region,
+		Region:     snapData.Region,
+	}
+	meta.WriteRegionState(kvWB, snapData.Region, rspb.PeerState_Normal)
+	return result, nil
 
 }
 
@@ -367,11 +407,11 @@ func (ps *PeerStorage) SaveReadyState(ready *raft.Ready) (*ApplySnapResult, erro
 	var applySnapResult *ApplySnapResult
 	// 通过 raft.isEmptySnap() 方法判断是否存在 Snapshot，如果有，则调用ApplySnapshot() 方法应用；
 	// Snap TODO
-	//if raft.IsEmptySnap(&ready.Snapshot) {
-	//	kvWriteBatch := &engine_util.WriteBatch{}
-	//	applySnapResult,err = ps.ApplySnapshot(&ready.Snapshot,kvWriteBatch,writeBatch)
-	//	kvWriteBatch.MustWriteToDB(ps.Engines.Kv)
-	//}
+	if raft.IsEmptySnap(&ready.Snapshot) == false {
+		kvWriteBatch := &engine_util.WriteBatch{}
+		applySnapResult,err = ps.ApplySnapshot(&ready.Snapshot,kvWriteBatch,writeBatch)
+		kvWriteBatch.MustWriteToDB(ps.Engines.Kv)
+	}
 
 	// 调用 Append 方法将需要持久化的 Entry 保存到 writeBatch
 	err = ps.Append(ready.Entries,writeBatch)
@@ -393,6 +433,7 @@ func (ps *PeerStorage) SaveReadyState(ready *raft.Ready) (*ApplySnapResult, erro
 
 	// 通过 writeBatch.WriteToDB 和 kvWB.WriteToDB 进行原子的写入到存储引擎
 	writeBatch.MustWriteToDB(ps.Engines.Raft)
+
 
 	return applySnapResult, nil
 }

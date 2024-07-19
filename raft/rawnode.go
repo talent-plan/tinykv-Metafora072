@@ -189,7 +189,9 @@ func (rn *RawNode) Ready() Ready {
 		}
 	}
 
-	// Snap
+	if IsEmptySnap(rn.Raft.RaftLog.pendingSnapshot) == false {
+		ready.Snapshot = *rn.Raft.RaftLog.pendingSnapshot
+	}
 
 
 	return ready
@@ -236,7 +238,9 @@ func (rn *RawNode) HasReady() bool {
 		hasReady = true
 	}
 
-	// Snap
+	if IsEmptySnap(rn.Raft.RaftLog.pendingSnapshot) == false {
+		hasReady = true
+	}
 
 	return hasReady
 }
@@ -268,6 +272,9 @@ func (rn *RawNode) Advance(rd Ready) {
 	//}
 	rn.Raft.msgs = nil
 	// Snap
+	rn.Raft.RaftLog.maybeCompact()        //丢弃被压缩的暂存日志；
+
+	rn.Raft.RaftLog.pendingSnapshot = nil //清空 pendingSnapshot；
 
 
 

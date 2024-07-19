@@ -52,7 +52,8 @@ type RaftLog struct {
 
 	// the incoming unstable snapshot, if any.
 	// (Used in 2C)
-	// 保存任何传入的不稳定快照，在应用快照到状态机时使用。
+	// 收到 leader 的快照的时候，会将快照保存在此处，后续会把快照保存到 Ready 中去
+	// 上层应用会应用 Ready 里面的快照
 	pendingSnapshot *pb.Snapshot
 
 	// Your Data Here (2A).
@@ -87,6 +88,18 @@ func newLog(storage Storage) *RaftLog {
 // 我们需要在某个时间点压缩日志条目，例如存储压缩稳定日志条目阻止日志条目在内存中无限增长
 func (l *RaftLog) maybeCompact() {
 	// Your Code Here (2C).
+
+	// FirstIndex 返回可能通过 Entries 获取的第一个日志条目的索引
+	// （较旧的条目已被合并到最新的快照中；如果存储中仅包含虚拟条目，则第一个日志条目不可用）。
+	curFirstIndex, _ := l.storage.FirstIndex()
+
+	if curFirstIndex > l.dummyIndex { // 存在新的日志条目
+		entries := l.entries[curFirstIndex - l.dummyIndex : ]
+		l.entries = make([]pb.Entry, 0)
+		l.entries = append(l.entries, entries...)
+	}
+
+	l.dummyIndex = curFirstIndex
 }
 
 // allEntries return all the entries not compacted.
@@ -151,6 +164,13 @@ func (l *RaftLog) Term(i uint64) (uint64, error) {
 	if i >= l.dummyIndex {
 		return l.entries[i - l.dummyIndex].Term, nil
 	}
+
+
+	// 判断 i 是否等于当前正准备安装的快照的最后一条日志
+	if IsEmptySnap(l.pendingSnapshot) == false && i == l.pendingSnapshot.Metadata.Index {
+		return l.pendingSnapshot.Metadata.Term, nil
+	}
+
 	return l.storage.Term(i)
 }
 
