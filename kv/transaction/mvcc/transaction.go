@@ -268,6 +268,7 @@ func decodeTimestamp(key []byte) uint64 {
 }
 
 // PhysicalTime returns the physical time part of the timestamp.
+// PhysicalTime 函数的作用是从一个时间戳中提取物理时间部分。
 func PhysicalTime(ts uint64) uint64 {
 	return ts >> tsoutil.PhysicalShiftBits
 }
