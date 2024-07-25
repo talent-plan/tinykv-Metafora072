@@ -1282,7 +1282,6 @@ func TestLeaderTransferToUpToDateNode3A(t *testing.T) {
 	if lead.Lead != 1 {
 		t.Fatalf("after election leader is %d, want 1", lead.Lead)
 	}
-
 	// Transfer leadership to 2.
 	nt.send(pb.Message{From: 2, To: 1, MsgType: pb.MessageType_MsgTransferLeader})
 

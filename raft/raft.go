@@ -17,6 +17,7 @@ package raft
 import (
 	"errors"
 	pb "github.com/pingcap-incubator/tinykv/proto/pkg/eraftpb"
+	"log"
 
 	//"fmt"
 	rand2 "math/rand"
@@ -188,6 +189,8 @@ type Raft struct {
 	// 领导者转移目标的ID，当其值不为零时表示正在进行领导者转移。
 	leadTransferee uint64
 
+	transferElapsed int // 用于计时 transfer 的时间
+
 	// Only one conf change may be pending (in the log, but not yet
 	// applied) at a time. This is enforced via PendingConfIndex, which
 	// is set to a value >= the log index of the latest pending
@@ -195,7 +198,9 @@ type Raft struct {
 	// be proposed if the leader's applied index is greater than this
 	// value.
 	// (Used in 3A conf change)
-	// 当前待处理的配置变更的日志索引，仅允许一个配置变更待处理。
+	// 一次只能挂起一个conf更改（在日志中，但尚未应用）。
+	// 这是通过PendingConfIndex实现的，该值设置为>=最新挂起配置更改（如果有）的日志索引。
+	// 仅当领导者的应用索引大于此值时，才允许提议配置更改。
 	PendingConfIndex uint64
 
 	// 随机超时选举，[electionTimeout, 2*electionTimeout)[150ms,300ms]
@@ -455,6 +460,12 @@ func (r *Raft) Step(m pb.Message) error {
 		case pb.MessageType_MsgSnapshot:
 			// Leader 将快照发送给其他节点
 			r.handleSnapshot(m)
+		case pb.MessageType_MsgTransferLeader:
+			// 非 Leader 收到 MsgTransfer 之后要移交给 Leader
+			r.handleTransferLeaderSendToLeader(m)
+		case pb.MessageType_MsgTimeoutNow:
+			// 结点作为转移目标收到 MsgTimeoutNow，发起选举
+			r.handleTimeoutNow(m)
 		}
 	case StateCandidate:
 		switch m.MsgType {
@@ -476,6 +487,12 @@ func (r *Raft) Step(m pb.Message) error {
 		case pb.MessageType_MsgSnapshot:
 			// Leader 将快照发送给其他节点
 			r.handleSnapshot(m)
+		case pb.MessageType_MsgTransferLeader:
+			// 非 Leader 收到 MsgTransfer 之后要移交给 Leader
+			r.handleTransferLeaderSendToLeader(m)
+		case pb.MessageType_MsgTimeoutNow:
+			// 结点作为转移目标收到 MsgTimeoutNow，发起选举
+			r.handleTimeoutNow(m)
 		}
 	case StateLeader:
 		switch m.MsgType {
@@ -497,9 +514,80 @@ func (r *Raft) Step(m pb.Message) error {
 		case pb.MessageType_MsgHeartbeatResponse:
 			// 节点对心跳的回应
 			r.handleHeartBeatResponse(m)
+		case pb.MessageType_MsgTransferLeader:
+			// Leader 收到 MsgTransfer 要求领导转移其领导权
+			r.handleTransferLeader(m)
 		}
 	}
 	return nil
+}
+
+// handleTimeoutNow 用于结点作为转移目标收到 MsgTimeoutNow，发起选举
+func (r *Raft) handleTimeoutNow(m pb.Message) {
+	if r.Prs[r.id] == nil {
+		return
+	}
+
+	message := pb.Message{
+		MsgType: pb.MessageType_MsgHup,
+		To:      r.id,
+		From:    r.id,
+	}
+
+	err := r.Step(message)
+	if err != nil {
+		log.Panic(err)
+	}
+}
+
+// handleTransferLeaderSendToLeader 用于非 leader 收到领导权禅让消息，需要转发给 leader
+func (r *Raft) handleTransferLeaderSendToLeader(m pb.Message) {
+	if r.Lead == None {
+		return
+	}
+
+	m.To = r.Lead
+	r.msgs = append(r.msgs, m)
+}
+
+// handleTransferLeader 用于 Leader 收到 MsgTransfer 要求领导转移其领导权
+func (r *Raft) handleTransferLeader(m pb.Message) {
+	if r.Prs[m.From] == nil { // 没有合法转移目标
+		return
+	}
+
+	if m.From == r.id { // 转移目标就是自身，那就什么都不需要做
+		return
+	}
+
+	// 当前有转让过程正在进行，并且是相同结点的转让流程，直接返回
+	if r.leadTransferee == m.From {
+		return
+	}
+
+	// 设置转移目标，初始化时间
+	r.leadTransferee = m.From
+	r.transferElapsed = 0
+
+	if r.Prs[r.leadTransferee].Match == r.RaftLog.LastIndex() {
+		// 日志是最新的
+		r.sendTimeoutNow(m.From)
+	} else {
+		// 日志不是最新的，帮助转移目标更新日志
+		r.sendAppend(m.From)
+	}
+
+
+}
+
+// sendTimeoutNow 用于结点向被转移者（to）发送 MsgTimeoutNow 消息，在收到 MsgTimeoutNow 消息后，被转移者应该立即开始新的选举，
+func (r *Raft) sendTimeoutNow(to uint64) {
+	message := pb.Message{
+		MsgType:	pb.MessageType_MsgTimeoutNow,
+		To:			to,
+		From: 		r.id,
+	}
+	r.msgs = append(r.msgs, message)
 }
 
 // 成为候选者，请求节点开始选举(发起投票)
@@ -630,12 +718,19 @@ func (r *Raft) handleHeartBeatResponse(m pb.Message) {
 
 // handlePropose Leader 追加从上层应用接收到的新日志，并广播给 Follower
 func (r *Raft) handlePropose(m pb.Message) {
+
 	for idx := range m.Entries {
 		// 设置新的日志的索引和日期
 		m.Entries[idx].Term = r.Term
 		m.Entries[idx].Index = r.RaftLog.LastIndex() + 1 + uint64(idx)
+		// TODO 3B
 	}
 	r.RaftLog.appendEntry(m.Entries)
+
+	// leader 处于领导权禅让，停止接收新的请求
+	if r.leadTransferee != None {
+		return
+	}
 
 	// 更新节点日志复制进度 Progress
 	r.Prs[r.id].Match = r.RaftLog.LastIndex()
@@ -766,6 +861,12 @@ func (r *Raft) handleAppendEntriesResponse(m pb.Message) {
 			}
 		}
 	}
+
+	// 转移目标的日志已经匹配完毕
+	if r.leadTransferee == m.From && r.Prs[r.leadTransferee].Match == r.RaftLog.LastIndex() {
+		// 向被转移者（to）发送 MsgTimeoutNow 消息
+		r.sendTimeoutNow(m.From)
+	}
 }
 
 // handleCommit 处理可能会发生的日志提交，返回
@@ -855,9 +956,30 @@ func (r *Raft) handleSnapshot(m pb.Message) {
 // addNode add a new node to raft group
 func (r *Raft) addNode(id uint64) {
 	// Your Code Here (3A).
+	if r.Prs[id] == nil {
+		r.Prs[id] = &Progress{
+			Next: r.RaftLog.LastIndex() + 1,
+		}
+		r.PendingConfIndex = None
+	}
 }
 
 // removeNode remove a node from raft group
 func (r *Raft) removeNode(id uint64) {
 	// Your Code Here (3A).
+	if r.Prs[id] != nil {
+		delete(r.Prs, id)
+
+		// 删除结点，可能会发生日志提交，因为结点变少了，日志就可能满足大部分结点有备份的要求了
+		if r.State == StateLeader && r.handleCommit() == true {
+			// 广播给其它所有结点提交日志
+			for goatId := range r.Prs {
+				if goatId == r.id {
+					continue
+				}
+				r.sendAppend(goatId)
+			}
+		}
+	}
+	r.PendingConfIndex = None
 }
