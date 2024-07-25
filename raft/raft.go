@@ -731,7 +731,7 @@ func (r *Raft) handlePropose(m pb.Message) {
 	if r.leadTransferee != None {
 		return
 	}
-
+cd
 	// 更新节点日志复制进度 Progress
 	r.Prs[r.id].Match = r.RaftLog.LastIndex()
 	r.Prs[r.id].Next = r.RaftLog.LastIndex() + 1
