@@ -73,6 +73,7 @@ func (d *peerMsgHandler) HandleRaftReady() {
 
 	if applySnapResult != nil { // 存在快照，则应用这个快照
 		if reflect.DeepEqual(applySnapResult.Region,applySnapResult.PrevRegion) == false {
+			// TODO Snap influence region
 			log.Infof("%sIn HandleRaftReady. set applySnapResultRegion.%s",Debug_Blue,Debug_Reset)
 			d.peerStorage.SetRegion(applySnapResult.Region)
 
@@ -166,19 +167,19 @@ func (d *peerMsgHandler) processCommittedEntry(entry *pb.Entry,writeBatch *engin
 	}
 
 	// 判断 RegionEpoch
-	// TODO judge usage
-	//if request.Header != nil {
-	//	fromEpoch := request.GetHeader().GetRegionEpoch()
-	//	if fromEpoch != nil {
-	//		if util.IsEpochStale(fromEpoch, d.Region().RegionEpoch) {
-	//			log.Infof("%sIn processCommittedEntry. Region Epoch error.%s",Debug_Red,	)
-	//
-	//			resp := ErrResp(&util.ErrEpochNotMatch{})
-	//			d.processProposals(resp,entry,false)
-	//			return writeBatch
-	//		}
-	//	}
-	//}
+	// TODO judge RegionEpoch ?
+	if request.Header != nil {
+		fromEpoch := request.GetHeader().GetRegionEpoch()
+		if fromEpoch != nil {
+			if util.IsEpochStale(fromEpoch, d.Region().RegionEpoch) {
+				//log.Panic("%sIn processCommittedEntry. Region epoch is staler.%s",Debug_Red,Debug_Reset)
+
+				response := ErrResp(&util.ErrEpochNotMatch{})
+				d.processProposal(entry,response)
+				return writeBatch
+			}
+		}
+	}
 
 	if request.AdminRequest != nil {
 		return d.processAdminRequest(entry, request, writeBatch)
@@ -256,6 +257,8 @@ func (d *peerMsgHandler) processConfChange(entry *pb.Entry,confChange *pb.ConfCh
 		meta.WriteRegionState(writeBatch,d.Region(),rspb.PeerState_Normal)
 		// 更新 storeMeta 中的 region 信息
 		d.updateMeta(d.Region())
+		// TODO judge usage
+		d.ctx.storeMeta.regionRanges.ReplaceOrInsert(&regionItem{region: d.Region()})
 		// 更新 peerCache，peerCache 保存了 peerId -> Peer 的映射
 		d.insertPeerCache(request.AdminRequest.ChangePeer.GetPeer())
 	case pb.ConfChangeType_RemoveNode: // 移除节点操作，用于从 Raft 集群中删除一个节点。
@@ -378,7 +381,7 @@ func (d *peerMsgHandler) processAdminRequest(entry *pb.Entry,request *raft_cmdpb
 		}
 		// TODO Split Region 的 peers 和当前 oldRegion 的 peers 数量不相等 ?
 		if len(d.Region().Peers) != len(request.AdminRequest.Split.NewPeerIds) {
-			log.Infof("%sTODO Split Region 的 peers 和当前 oldRegion 的 peers 数量不相等 )%s",Debug_Red,Debug_Reset)
+			log.Infof("%sIn processAdminRequest: raft_cmdpb.AdminCmdType_Split. BAD Request: RegionPeersChanged.%s",Debug_Red,Debug_Reset)
 		}
 		log.Infof("%sIn processAdminRequest: raft_cmdpb.AdminCmdType_Split. LEGAL Request: OK.%s",Debug_Green,Debug_Reset)
 

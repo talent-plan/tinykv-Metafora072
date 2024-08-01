@@ -578,9 +578,15 @@ func (r *Raft) handleTransferLeaderSendToLeader(m pb.Message) {
 	m.To = r.Lead
 	r.msgs = append(r.msgs, m)
 }
+var num = 0
 
 // handleTransferLeader 用于 Leader 收到 MsgTransfer 要求领导转移其领导权
 func (r *Raft) handleTransferLeader(m pb.Message) {
+	//if r.id == 1 && m.From == 1{
+	//	num++
+	//	fmt.Println(num)
+	//}
+	//fmt.Println("nodeID : ",r.id,"->",m.From)
 	if r.Prs[m.From] == nil { // 没有合法转移目标
 		return
 	}
