@@ -145,10 +145,10 @@ project3a:
 
 project3b:
 	$(TEST_CLEAN)
-	$(GOTEST) ./kv/test_raftstore -run ^TestTransferLeader3B$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^$ || true
 	$(GOTEST) ./kv/test_raftstore -run ^TestBasicConfChange3B$ || true
 	$(GOTEST) ./kv/test_raftstore -run ^TestConfChangeRemoveLeader3B$ || true
-	$(GOTEST) ./kv/test_raftstore -run ^TestConfChangeRecover3B$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^TestConfChangeRecover3BTestTransferLeader3B$ || true
 	$(GOTEST) ./kv/test_raftstore -run ^TestConfChangeRecoverManyClients3B$ || true
 	$(GOTEST) ./kv/test_raftstore -run ^TestConfChangeUnreliable3B$ || true
 	$(GOTEST) ./kv/test_raftstore -run ^TestConfChangeUnreliableRecover3B$ || true
@@ -163,6 +163,113 @@ project3b:
 	$(GOTEST) ./kv/test_raftstore -run ^TestSplitConfChangeSnapshotUnreliableRecoverConcurrentPartition3B$ || true
 	$(TEST_CLEAN)
 
+project3b_multiTests:
+	$(TEST_CLEAN)
+	for i in {1..10}; do \
+		$(GOTEST) ./kv/test_raftstore -run ^$(TEST_NAME)$$ | grep -E "PASS|FAIL|run" || true; \
+	done
+	$(TEST_CLEAN)
+
+project3b_multiTestsWithError:
+	$(TEST_CLEAN)
+	for i in {1..10}; do \
+		$(GOTEST) ./kv/test_raftstore -run ^$(TEST_NAME)$$ | grep -v "info" || true; \
+	done
+	$(TEST_CLEAN)
+
+project3b_multiTestsWithErrors:
+	$(TEST_CLEAN)
+	PASS_COUNT=0; \
+	for i in {1..10}; do \
+		RESULT=$$($(GOTEST) ./kv/test_raftstore -run ^$(TEST_NAME)$$ | grep -v "info" || true); \
+		echo "$$RESULT"; \
+		PASS_COUNT=$$(($$PASS_COUNT + $$(echo "$$RESULT" | grep -c "PASS"))); \
+	done; \
+	HALF_PASS_COUNT=$$(($$PASS_COUNT / 2)); \
+	GREEN='\033[0;32m'; \
+	NC='\033[0m'; \
+	echo -e "$$GREEN TOTAL tests: 10 $$NC"; \
+	echo -e "$$GREEN PASS  tests: $$HALF_PASS_COUNT $$NC"
+	$(TEST_CLEAN)
+
+
+project3b_TransferLeader:
+	$(TEST_CLEAN)
+	$(GOTEST) ./kv/test_raftstore -run ^TestTransferLeader3B$ || true
+	$(TEST_CLEAN)
+project3b_ConfChange:
+	$(TEST_CLEAN)
+	$(GOTEST) ./kv/test_raftstore -run ^TestBasicConfChange3B$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^TestConfChangeRemoveLeader3B$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^TestConfChangeRecover3B$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^TestConfChangeRecoverManyClients3B$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^TestConfChangeUnreliable3B$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^TestConfChangeUnreliableRecover3B$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^TestConfChangeSnapshotUnreliableRecover3B$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^TestConfChangeSnapshotUnreliableRecoverConcurrentPartition3B$ || true
+	$(TEST_CLEAN)
+project3b_TestConfChangeRemoveLeader3B10s:
+	$(TEST_CLEAN)
+	$(GOTEST) ./kv/test_raftstore -run ^TestConfChangeRemoveLeader3B$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^TestConfChangeRemoveLeader3B$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^TestConfChangeRemoveLeader3B$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^TestConfChangeRemoveLeader3B$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^TestConfChangeRemoveLeader3B$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^TestConfChangeRemoveLeader3B$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^TestConfChangeRemoveLeader3B$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^TestConfChangeRemoveLeader3B$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^TestConfChangeRemoveLeader3B$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^TestConfChangeRemoveLeader3B$ || true
+	$(TEST_CLEAN)
+project3b_TestConfChangeUnreliableRecover3B10s:
+	$(TEST_CLEAN)
+	$(GOTEST) ./kv/test_raftstore -run ^TestConfChangeUnreliableRecover3B$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^TestConfChangeUnreliableRecover3B$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^TestConfChangeUnreliableRecover3B$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^TestConfChangeUnreliableRecover3B$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^TestConfChangeUnreliableRecover3B$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^TestConfChangeUnreliableRecover3B$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^TestConfChangeUnreliableRecover3B$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^TestConfChangeUnreliableRecover3B$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^TestConfChangeUnreliableRecover3B$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^TestConfChangeUnreliableRecover3B$ || true
+	$(TEST_CLEAN)
+project3b_Split:
+	$(TEST_CLEAN)
+	$(GOTEST) ./kv/test_raftstore -run ^TestOneSplit3B$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^TestSplitRecover3B$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^TestSplitRecoverManyClients3B$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^TestSplitUnreliable3B$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^TestSplitUnreliableRecover3B$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^TestSplitConfChangeSnapshotUnreliableRecover3B$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^TestSplitConfChangeSnapshotUnreliableRecoverConcurrentPartition3B$ || true
+	$(TEST_CLEAN)
+project3b_TestOneSplit3B10s:
+	$(TEST_CLEAN)
+	$(GOTEST) ./kv/test_raftstore -run ^TestOneSplit3B$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^TestOneSplit3B$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^TestOneSplit3B$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^TestOneSplit3B$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^TestOneSplit3B$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^TestOneSplit3B$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^TestOneSplit3B$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^TestOneSplit3B$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^TestOneSplit3B$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^TestOneSplit3B$ || true
+	$(TEST_CLEAN)
+project3b_TestSplitConfChangeSnapshotUnreliableRecoverConcurrentPartition3B10s:
+	$(TEST_CLEAN)
+	$(GOTEST) ./kv/test_raftstore -run ^TestSplitConfChangeSnapshotUnreliableRecoverConcurrentPartition3B$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^TestSplitConfChangeSnapshotUnreliableRecoverConcurrentPartition3B$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^TestSplitConfChangeSnapshotUnreliableRecoverConcurrentPartition3B$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^TestSplitConfChangeSnapshotUnreliableRecoverConcurrentPartition3B$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^TestSplitConfChangeSnapshotUnreliableRecoverConcurrentPartition3B$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^TestSplitConfChangeSnapshotUnreliableRecoverConcurrentPartition3B$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^TestSplitConfChangeSnapshotUnreliableRecoverConcurrentPartition3B$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^TestSplitConfChangeSnapshotUnreliableRecoverConcurrentPartition3B$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^TestSplitConfChangeSnapshotUnreliableRecoverConcurrentPartition3B$ || true
+	$(GOTEST) ./kv/test_raftstore -run ^TestSplitConfChangeSnapshotUnreliableRecoverConcurrentPartition3B$ || true
+	$(TEST_CLEAN)
 project3c:
 	$(GOTEST) ./scheduler/server ./scheduler/server/schedulers -check.f="3C"
 

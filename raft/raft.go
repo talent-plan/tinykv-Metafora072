@@ -245,6 +245,16 @@ func newRaft(c *Config) *Raft {
 	for _, id := range c.peers {
 		raft.Prs[id] = &Progress{}
 	}
+
+	// update 3A 更新 PendingConfIndex
+	// 查找 [appliedIndex + 1, lastIndex] 之间是否存在还没有 Apply 的 ConfChange Entry
+	raft.PendingConfIndex = None
+	for idx := raft.RaftLog.applied + 1; idx <= raft.RaftLog.LastIndex(); idx++ {
+		if raft.RaftLog.entries[idx - raft.RaftLog.dummyIndex].EntryType == pb.EntryType_EntryConfChange {
+			raft.PendingConfIndex = idx
+			break
+		}
+	}
 	return raft
 }
 
@@ -361,6 +371,14 @@ func (r *Raft) tick() {
 				From:    r.id,
 			})
 		}
+		// TODO 选举超时 判断心跳回应数量，避免 request timeout
+		if r.leadTransferee != None {
+			// 在选举超时后领导权禅让仍然未完成，则 leader 应该终止领导权禅让，这样可以恢复客户端请求
+			r.transferElapsed++
+			if r.transferElapsed >= r.electionTimeout {
+				r.leadTransferee = None
+			}
+		}
 	}
 }
 
@@ -382,6 +400,8 @@ func (r *Raft) becomeFollower(term uint64, lead uint64) {
 	r.Term = term
 	r.Lead = lead
 	r.electionElapsed = 0
+	// TODO 3B 更新 leadTransferee
+	r.leadTransferee = None
 
 	// 生成随机选举超时时间，范围在 [r.electionTimeout, 2*r.electionTimeout]
 	source := rand2.NewSource(time.Now().UnixNano())
@@ -404,6 +424,7 @@ func (r *Raft) becomeCandidate() {
 	r.votes[r.id] = true
 
 	r.electionElapsed = 0
+
 
 	// 生成随机选举超时时间，范围在 [r.electionTimeout, 2*r.electionTimeout]
 	source := rand2.NewSource(time.Now().UnixNano())
@@ -428,6 +449,14 @@ func (r *Raft) becomeLeader() {
 	for id := range r.Prs {
 		r.Prs[id].Next = r.RaftLog.LastIndex() + 1 // 初始化为 leader 的最后一条日志索引（后续出现冲突会往前移动）
 		r.Prs[id].Match = 0                        // 初始化为 0 就可以了
+	}
+	// TODO 3B 成为Leader之后要更新 PendingConfIndex 字段
+	r.PendingConfIndex = None
+	for idx := r.RaftLog.applied + 1; idx <= r.RaftLog.LastIndex(); idx++ {
+		if r.RaftLog.entries[idx - r.RaftLog.dummyIndex].EntryType == pb.EntryType_EntryConfChange {
+			r.PendingConfIndex = idx
+			break
+		}
 	}
 
 	// Leader should propose a noop entry on its term ??
@@ -629,6 +658,9 @@ func (r *Raft) handleStartElection(m pb.Message) {
 
 // 节点收到 RequestVote 请求时候的处理
 func (r *Raft) handleRequestVote(m pb.Message) {
+	//if r.Prs[m.From] == nil {
+	//	return
+	//}
 	//fmt.Println("handleRequestVote used!") // debug
 	message := pb.Message{
 		MsgType: pb.MessageType_MsgRequestVoteResponse,
@@ -657,6 +689,9 @@ func (r *Raft) handleRequestVote(m pb.Message) {
 
 // handleRequestVoteResponse 节点收到 RequestVoteResponse 时候的处理
 func (r *Raft) handleRequestVoteResponse(m pb.Message) {
+	//if r.Prs[m.From] == nil {
+	//	return
+	//}
 	//fmt.Println("handleRequestVoteResponse used!") // debug
 	// 投的赞成票
 	if m.Reject == false {
@@ -718,12 +753,14 @@ func (r *Raft) handleHeartBeatResponse(m pb.Message) {
 
 // handlePropose Leader 追加从上层应用接收到的新日志，并广播给 Follower
 func (r *Raft) handlePropose(m pb.Message) {
-
 	for idx := range m.Entries {
 		// 设置新的日志的索引和日期
 		m.Entries[idx].Term = r.Term
 		m.Entries[idx].Index = r.RaftLog.LastIndex() + 1 + uint64(idx)
-		// TODO 3B
+		// TODO 3B confChange
+		if m.Entries[idx].EntryType == pb.EntryType_EntryConfChange {
+			r.PendingConfIndex = m.Entries[idx].Index
+		}
 	}
 	r.RaftLog.appendEntry(m.Entries)
 
@@ -731,7 +768,7 @@ func (r *Raft) handlePropose(m pb.Message) {
 	if r.leadTransferee != None {
 		return
 	}
-cd
+
 	// 更新节点日志复制进度 Progress
 	r.Prs[r.id].Match = r.RaftLog.LastIndex()
 	r.Prs[r.id].Next = r.RaftLog.LastIndex() + 1
@@ -751,6 +788,9 @@ cd
 // handleAppendEntries handle AppendEntries RPC request
 // 处理同步日志条目
 func (r *Raft) handleAppendEntries(m pb.Message) {
+	//if r.Prs[m.From] == nil {
+	//	return
+	//}
 	//fmt.Println("handleAppendEntries used!") // debug
 	// Your Code Here (2A).
 	responseMessage := pb.Message{
@@ -837,6 +877,9 @@ func (r *Raft) handleAppendEntries(m pb.Message) {
 
 // handleAppendEntriesResponse Leader节点收到 AppendEntriesResponse 的处理
 func (r *Raft) handleAppendEntriesResponse(m pb.Message) {
+	//if r.Prs[m.From] == nil {
+	//	return
+	//}
 	// fmt.Println("handleAppendEntriesResponse used!") // debug
 	if m.Reject == true { // 拒绝同步
 		if m.Term > r.Term { // 对方任期大于自己，自己无法成为Leader了
@@ -960,6 +1003,7 @@ func (r *Raft) addNode(id uint64) {
 		r.Prs[id] = &Progress{
 			Next: r.RaftLog.LastIndex() + 1,
 		}
+		// this is unused in 3A TODO
 		r.PendingConfIndex = None
 	}
 }
@@ -981,5 +1025,6 @@ func (r *Raft) removeNode(id uint64) {
 			}
 		}
 	}
+	// this is unused in 3A TODO
 	r.PendingConfIndex = None
 }

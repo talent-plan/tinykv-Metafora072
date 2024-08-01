@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/proto"
+	"github.com/pingcap-incubator/tinykv/log"
 	"github.com/pingcap-incubator/tinykv/proto/pkg/metapb"
 	"github.com/pingcap-incubator/tinykv/proto/pkg/schedulerpb"
 	"github.com/pingcap-incubator/tinykv/scheduler/pkg/logutil"
@@ -30,7 +31,6 @@ import (
 	"github.com/pingcap-incubator/tinykv/scheduler/server/id"
 	"github.com/pingcap-incubator/tinykv/scheduler/server/schedule"
 	"github.com/pingcap/errcode"
-	"github.com/pingcap/log"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
@@ -276,10 +276,64 @@ func (c *RaftCluster) handleStoreHeartbeat(stats *schedulerpb.StoreStats) error 
 	return nil
 }
 
+// judgeRegionUpdate 检查 region 是否可以被 goatRegion 更新
+func (c *RaftCluster) judgeRegionUpdate(region *core.RegionInfo,goatRegion *core.RegionInfo) (bool,error) {
+	// goatRegion 的 ConfVer 和 Version 都更大，那就可以更新
+	if goatRegion.GetRegionEpoch() == nil {
+		return false, errors.New("goatRegion epoch is nil")
+	}
+	if region.GetRegionEpoch() == nil { // 没有 region 一定可以更新
+		//return false, errors.New("region epoch is nil")
+		return true, nil
+	}
+
+
+	if goatRegion.GetRegionEpoch().GetConfVer() >= region.GetRegionEpoch().GetConfVer() && goatRegion.GetRegionEpoch().GetVersion() >= region.GetRegionEpoch().GetVersion() {
+		return true,nil
+	}
+	return false,nil
+}
+
 // processRegionHeartbeat updates the region information.
+// processRegionHeartbeat 更新 region 信息
 func (c *RaftCluster) processRegionHeartbeat(region *core.RegionInfo) error {
 	// Your Code Here (3C).
+	regionEpoch := region.GetRegionEpoch()
+	if regionEpoch == nil {
+		log.Infof("RegionEpoch is nil")
+		return errors.New("region epoch is nil")
+	}
 
+	curRegionEpoch := c.GetRegion(region.GetID())
+	if curRegionEpoch == nil {
+		coverRegions := c.ScanRegions(region.GetStartKey(),region.GetEndKey(),-1)
+		for _, coverRegion := range coverRegions {
+			ok, err := c.judgeRegionUpdate(coverRegion, region)
+			if err != nil {
+				return errors.New(err.Error())
+			}
+			if ok == false {
+				return errors.New("region update failed")
+			}
+		}
+	} else {
+		ok, err := c.judgeRegionUpdate(curRegionEpoch, region)
+		if err != nil {
+			return errors.New(err.Error())
+		}
+		if ok == false {
+			return errors.New("region update failed")
+		}
+	}
+
+	// region 可以更新，更新 region tree 和 store status
+	err := c.putRegion(region)
+	if err != nil {
+		log.Panic(err.Error())
+	}
+	for idx := range region.GetStoreIds() {
+		c.updateStoreStatusLocked(idx)
+	}
 	return nil
 }
 

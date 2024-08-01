@@ -116,7 +116,7 @@ func (server *Server) KvGet(_ context.Context, req *kvrpcpb.GetRequest) (*kvrpcp
 	// 尝试获取指定键的值。如果获取值时发生区域错误，则将错误信息返回给客户端。如果值不存在，则设置 NotFound 标志。
 	value, err := txn.GetValue(req.GetKey())
 	if err != nil {
-		regionError, ok = err.(*raft_storage.RegionError)
+		regionError, ok := err.(*raft_storage.RegionError)
 		if ok {
 			response.RegionError = regionError.RequestErr
 			return response, nil
@@ -365,7 +365,10 @@ func (server *Server) KvCommit(_ context.Context, req *kvrpcpb.CommitRequest) (*
 		// 检查 key 的 lock 的时间戳是否为事务的 startTs，不是直接 abort。
 		// 因为存在一种可能，在你 commit 的时候，你前面的 prewrite 操作因为过于缓慢，超时，
 		// 导致你的 lock 被其他事务 rollback 了，然后你这里读取到的 lock 实际上不属于你的，是别的事务的。
+		//fmt.Println("lock.Ts:", lock.Ts)
+		//fmt.Println("req.GetStartVersion():", req.GetStartVersion())
 		if lock.Ts != req.GetStartVersion() {
+			// fmt.Println(lock.Ts,req.GetStartVersion())
 			keyError := &kvrpcpb.KeyError{
 				Retryable: "true",
 			}
@@ -497,6 +500,8 @@ func (server *Server) KvScan(_ context.Context, req *kvrpcpb.ScanRequest) (*kvrp
 		}
 	}
 
+	//fmt.Println("lenPairs:",len(response.Pairs))
+	//fmt.Println("scanCount:",scanCount)
 	return response, nil
 }
 
@@ -609,6 +614,7 @@ func (server *Server) KvCheckTxnStatus(_ context.Context, req *kvrpcpb.CheckTxnS
 	}
 
 	// lock 不为空，检查 lock 是否超时，如果超时则移除 Lock 和 Value，创建一个 WriteKindRollback
+
 	if mvcc.PhysicalTime(req.GetCurrentTs()) >= mvcc.PhysicalTime(lock.Ts) + lock.Ttl {
 		txn.DeleteLock(req.GetPrimaryKey())
 		txn.DeleteValue(req.GetPrimaryKey())
