@@ -165,14 +165,14 @@ project3b:
 
 project3b_multiTests:
 	$(TEST_CLEAN)
-	for i in {1..10}; do \
+	for i in {1..30}; do \
 		$(GOTEST) ./kv/test_raftstore -run ^$(TEST_NAME)$$ | grep -E "PASS|FAIL|run" || true; \
 	done
 	$(TEST_CLEAN)
 
 project3b_multiTestsWithError:
 	$(TEST_CLEAN)
-	for i in {1..10}; do \
+	for i in {1..30}; do \
 		$(GOTEST) ./kv/test_raftstore -run ^$(TEST_NAME)$$ | grep -v "info" || true; \
 	done
 	$(TEST_CLEAN)
@@ -180,7 +180,7 @@ project3b_multiTestsWithError:
 project3b_multiTestsWithErrors:
 	$(TEST_CLEAN)
 	PASS_COUNT=0; \
-	for i in {1..10}; do \
+	for i in {1..30}; do \
 		RESULT=$$($(GOTEST) ./kv/test_raftstore -run ^$(TEST_NAME)$$ | grep -v "info" || true); \
 		echo "$$RESULT"; \
 		PASS_COUNT=$$(($$PASS_COUNT + $$(echo "$$RESULT" | grep -c "PASS"))); \
@@ -188,7 +188,7 @@ project3b_multiTestsWithErrors:
 	HALF_PASS_COUNT=$$(($$PASS_COUNT / 2)); \
 	GREEN='\033[0;32m'; \
 	NC='\033[0m'; \
-	echo -e "$$GREEN TOTAL tests: 10 $$NC"; \
+	echo -e "$$GREEN TOTAL tests: 30 $$NC"; \
 	echo -e "$$GREEN PASS  tests: $$HALF_PASS_COUNT $$NC"
 	$(TEST_CLEAN)
 

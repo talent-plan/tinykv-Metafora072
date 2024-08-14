@@ -349,10 +349,10 @@ func (d *peerMsgHandler) processAdminRequest(entry *pb.Entry,request *raft_cmdpb
 		}
 	// TODO other cases: AdminCmdType_ChangePeer、AdminCmdType_TransferLeader、AdminCmdType_Split
 	case raft_cmdpb.AdminCmdType_TransferLeader:
-		// TODO needn't handle
+		// needn't handle
 		break
 	case raft_cmdpb.AdminCmdType_ChangePeer:
-		// TODO need handle ?
+		// needn't handle
 		break
 	case raft_cmdpb.AdminCmdType_Split: // region分裂
 		// TODO regionId 不匹配
@@ -379,9 +379,12 @@ func (d *peerMsgHandler) processAdminRequest(entry *pb.Entry,request *raft_cmdpb
 			d.processProposal(entry,ErrResp(errKeyNotInRegion))
 			return writeBatch
 		}
-		// TODO Split Region 的 peers 和当前 oldRegion 的 peers 数量不相等 ?
+		// TODO Split Region 的 peers 和当前 oldRegion 的 peers 数量不相等
 		if len(d.Region().Peers) != len(request.AdminRequest.Split.NewPeerIds) {
 			log.Infof("%sIn processAdminRequest: raft_cmdpb.AdminCmdType_Split. BAD Request: RegionPeersChanged.%s",Debug_Red,Debug_Reset)
+			errResponse := ErrResp(errors.Errorf("length of NewPeerIds != length of Peers"))
+			d.processProposal(entry,errResponse)
+			return writeBatch
 		}
 		log.Infof("%sIn processAdminRequest: raft_cmdpb.AdminCmdType_Split. LEGAL Request: OK.%s",Debug_Green,Debug_Reset)
 
@@ -589,9 +592,10 @@ func (d *peerMsgHandler) processRequest(entry *pb.Entry,request *raft_cmdpb.Raft
 				XXX_sizecache        int32          `json:"-"`
 			}
 			 */
+			rtnRegion := *d.Region()
 			raftCmdResponse.Responses = append(raftCmdResponse.Responses, &raft_cmdpb.Response{
 				CmdType: raft_cmdpb.CmdType_Snap,
-				Snap:    &raft_cmdpb.SnapResponse{Region: d.Region()},
+				Snap:    &raft_cmdpb.SnapResponse{Region: &rtnRegion},
 			})
 		}
 	}

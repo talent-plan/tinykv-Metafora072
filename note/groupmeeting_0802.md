@@ -9,16 +9,16 @@
 |   ConfChange   |                 TestConfChangeRemoveLeader3B                 | <font color=Green>**10PASS**</font> |                                            |
 |   ConfChange   |                   TestConfChangeRecover3B                    | <font color=Green>**10PASS**</font> |                                            |
 |   ConfChange   |              TestConfChangeRecoverManyClients3B              | <font color=Green>**10PASS**</font> |                                            |
-|   ConfChange   |                  TestConfChangeUnreliable3B                  | <font color=Red>**0~2FAIL**</font>  |              request timeout               |
-|   ConfChange   |              TestConfChangeUnreliableRecover3B               | <font color=Red>**0~2FAIL**</font>  |              request timeout               |
-|   ConfChange   |          TestConfChangeSnapshotUnreliableRecover3B           | <font color=Red>**0~2FAIL**</font>  |              request timeout               |
+|   ConfChange   |                  TestConfChangeUnreliable3B                  | <font color=Red>**1~2FAIL**</font>  |              request timeout               |
+|   ConfChange   |              TestConfChangeUnreliableRecover3B               | <font color=Red>**1~2FAIL**</font>  |              request timeout               |
+|   ConfChange   |          TestConfChangeSnapshotUnreliableRecover3B           | <font color=Red>**1~2FAIL**</font>  |              request timeout               |
 |   ConfChange   | TestConfChangeSnapshotUnreliableRecoverConcurrentPartition3B | <font color=Green>**10PASS**</font> |                                            |
 |     Split      |                        TestOneSplit3B                        | <font color=Green>**10PASS**</font> |                                            |
 |     Split      |                      TestSplitRecover3B                      | <font color=Green>**10PASS**</font> |                                            |
-|     Split      |                TestSplitRecoverManyClients3B                 | <font color=Red>**1~3FAIL**</font>  |            key is not in region            |
-|     Split      |                    TestSplitUnreliable3B                     | <font color=Red>**1~3FAIL**</font>  |            key is not in region            |
-|     Split      |                 TestSplitUnreliableRecover3B                 | <font color=Red>**0~3FAIL**</font>  |            key is not in region            |
-|     Split      |        TestSplitConfChangeSnapshotUnreliableRecover3B        | <font color=Red>**0~1FAIL**</font>  |            key is not in region            |
+|     Split      |                TestSplitRecoverManyClients3B                 | <font color=Red>**2~4FAIL**</font>  |            key is not in region            |
+|     Split      |                    TestSplitUnreliable3B                     | <font color=Red>**2~4FAIL**</font>  |            key is not in region            |
+|     Split      |                 TestSplitUnreliableRecover3B                 | <font color=Red>**1~3FAIL**</font>  |            key is not in region            |
+|     Split      |        TestSplitConfChangeSnapshotUnreliableRecover3B        | <font color=Red>**1~3FAIL**</font>  |            key is not in region            |
 |     Split      | TestSplitConfChangeSnapshotUnreliableRecoverConcurrentPartition3B | <font color=Red>**1~3FAIL**</font>  | request timeout       key is not in region |
 
 **Project3C** : 实现并通过测试。
@@ -155,12 +155,12 @@
 
 ![](groupmeeting_0802.assets/QQ截图20240802020304.png)
 
-> 一开始以为是 removeNode 的逻辑写得有问题，但是最后发现是 3A 写的有问题。当一个 Leader 变成 Follower 时，要及时得清空自己的 leadTransferee 字段。因为你已经不再是 Leader 了，你的 leadTransferee 字段就没有意义了。所以可能发生了这样一种情况，一开始集群中某个节点是领导者，然后它将领导权转移给了（1,1），意味着它的 leadTransferee 字段就是 1。领导权转移后，自身变成 Follower，但是此时自身的 leadTransferee 字段没有清空。之后（1,1）节点被移除了。在后来的某个时刻，自身又称为了领导者，发现 leadTransferee 字段是 1，它又会尝试将领导权转移给 1 号节点，但 1 号节点早就已经不在集群中了，从而导致了错误。
+> 一开始以为是 removeNode 的逻辑写得有问题，但是最后发现是 3A 写的有问题。当一个 Leader 变成 Follower 时，要及时得清空自己的 leadTransferee 字段。因为你已经不再是 Leader 了，你的 leadTransferee 字段就没有意义了，如果此时不清空该字段的话，可能就会产生一些潜在的问题。
 >
 > 添加了这个处理后，这个测试点就能正常 PASS 了。
 
 3. ConfChange部分目前还有`TestConfChangeUnreliable3B`、`TestConfChangeUnreliableRecover3B`、`TestConfChangeSnapshotUnreliableRecover3B` 三个测试点会出现 request timeout 问题。（测十次大概有 1~2 次出现 request timeout）。
-4. 在跑测试的时候，相当大部分的测试都会出现类似下图的 error 信息 ： `received an invalid message XXX，ignore it`。但是遇见这个问题的测试点中，大部分最终测试结果都是 PASS 的，只有一小部分会报 request timeout 错误。
+4. 在跑测试的时候，相当大部分的测试都会出现类似下图的 error log ： `received an invalid message XXX，ignore it`。但是遇见这个问题的测试点中，大部分最终测试结果都是 PASS 的，只有一小部分情形，这种 error log 会大量出现并可能因此导致 request timeout 错误。
 
 > 根据报错信息来看，可能是 region epoch 没有配置好，具体原因还在排查中。
 
@@ -173,5 +173,7 @@
 > 具体原因未知，在 ProposeRaftCommand 方法中，对普通请求（Get、Put、Delete），添加了 CheckKeyInRegion，如果 key not in region，就直接返回 client 相应错误而不将该请求传递给下层，就不会报这个错误了（测了大概五十次 TestOneSplit3B 都能正常 PASS）。
 
 6. Split 部分后面都会报如下图的 `key is not in region` 错误，但是确实也写了 CheckKeyInRegion 的相关逻辑。这个错误只是遇到了做了记录，还没开始排查具体原因。准备把 ConfChange 部分的问题搞得差不多再来搞这个。
+
+![QQ截图20240802040643](groupmeeting_0802.assets/QQ截图20240802040643.png)
 
 7. Split 部分除了有  `received an invalid message XXX，ignore it` 的 error log，还遇见了`unsupported worker.Task: &{RegionId:XXX StartKey:[XXX] EndKey:[]}`、`[region XXX] send message failed message region_id:XXX from_peer:<id:XXX store_id:XXX > to_peer:<id:XXX store_id:XXX> region_epoch:<conf_ver:XXX version:XXX > is_tombstone:true  is dropped` 的 error log，也在此先记录一下。

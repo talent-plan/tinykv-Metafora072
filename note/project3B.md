@@ -11,10 +11,6 @@
 
 1.  我们需要实现 `CompactLog`、`TransferLeader`、`ChangePeer`、`Split`四种 AdminRequest。其中`CompactLog` 我们已经在 Project2C 实现。所以需要我们实现的就是 `TransferLeader`、`ChangePeer`、`Split`这三种 AdminRequest。所以我们可以先去实现 `peer_msg_handler.go`中的`proposeRaftCommand`方法（将 client 的请求包装成 entry 传递给 raft 层）。
 
-
-
-
-
 ## TranferLeader
 
 这个Request实现的比较简单，在`peer_msg_handler.go`中的`proposeRaftCommand`方法中添加对TranferLeader类型AdminRequest的处理，根据文档提示：
@@ -177,7 +173,7 @@ d.Region().RegionEpoch.Version++
 
 ## 测试点反馈记录
 
-|   测试点类型   |                          测试点名称                          |         测试情况 / 10TESTS          |                  错误类型                  |
+|   测试点类型   |                          测试点名称                          |         测试情况 / 30TESTS          |                  错误类型                  |
 | :------------: | :----------------------------------------------------------: | :---------------------------------: | :----------------------------------------: |
 | TransferLeader |                     TestTransferLeader3B                     | <font color=Green>**10PASS**</font> |                                            |
 |   ConfChange   |                    TestBasicConfChange3B                     | <font color=Green>**10PASS**</font> |                                            |
@@ -190,11 +186,11 @@ d.Region().RegionEpoch.Version++
 |   ConfChange   | TestConfChangeSnapshotUnreliableRecoverConcurrentPartition3B | <font color=Green>**10PASS**</font> |                                            |
 |     Split      |                        TestOneSplit3B                        | <font color=Green>**10PASS**</font> |                                            |
 |     Split      |                      TestSplitRecover3B                      | <font color=Green>**10PASS**</font> |                                            |
-|     Split      |                TestSplitRecoverManyClients3B                 | <font color=Red>**2~4FAIL**</font>  |            key is not in region            |
-|     Split      |                    TestSplitUnreliable3B                     | <font color=Red>**2~4FAIL**</font>  |            key is not in region            |
-|     Split      |                 TestSplitUnreliableRecover3B                 | <font color=Red>**0~3FAIL**</font>  |            key is not in region            |
-|     Split      |        TestSplitConfChangeSnapshotUnreliableRecover3B        | <font color=Red>**0~1FAIL**</font>  |            key is not in region            |
-|     Split      | TestSplitConfChangeSnapshotUnreliableRecoverConcurrentPartition3B | <font color=Red>**1~3FAIL**</font>  | request timeout       key is not in region |
+|     Split      |                TestSplitRecoverManyClients3B                 |  <font color=Red>**10FAIL**</font>  |         test timed out after 10m0s         |
+|     Split      |                    TestSplitUnreliable3B                     |  <font color=Red>**1FAIL**</font>   |              request timeout               |
+|     Split      |                 TestSplitUnreliableRecover3B                 | <font color=Green>**30PASS**</font> |                                            |
+|     Split      |        TestSplitConfChangeSnapshotUnreliableRecover3B        |  <font color=Red>**2FAIL**</font>   |              request timeout               |
+|     Split      | TestSplitConfChangeSnapshotUnreliableRecoverConcurrentPartition3B | <font color=Green>**30PASS**</font> | request timeout       key is not in region |
 
 ##  遇到的问题
 
