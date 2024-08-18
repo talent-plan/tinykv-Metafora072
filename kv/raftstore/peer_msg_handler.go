@@ -94,7 +94,7 @@ func (d *peerMsgHandler) HandleRaftReady() {
 	// 调用 d.Send() 方法将 Ready 中的 Msg 发送出去
 	d.Send(d.ctx.trans, ready.Messages)
 
-	// 处理待 apply 的日志
+
 	if len(ready.CommittedEntries) > 0 {
 		entries := ready.CommittedEntries
 
@@ -434,6 +434,10 @@ func (d *peerMsgHandler) processAdminRequest(entry *pb.Entry,request *raft_cmdpb
 		// 调用 meta.WriteRegionState 方法持久化 oldRegion 和 newRegion
 		meta.WriteRegionState(writeBatch,d.Region(),rspb.PeerState_Normal)
 		meta.WriteRegionState(writeBatch,newRegion,rspb.PeerState_Normal)
+
+		// TODO handle usage: test timed out after 10m0s
+		d.SizeDiffHint = 0
+		d.ApproximateSize = new(uint64)
 
 		// 根据参考文档提示，调用 createPeer 方法创建当前 store 上的 newRegion Peer，注册到 router，并启动
 		newRegionPeer, err := createPeer(d.storeID(),d.ctx.cfg,d.ctx.schedulerTaskSender,d.ctx.engine,newRegion)

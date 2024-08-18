@@ -76,6 +76,8 @@ func newLog(storage Storage) *RaftLog {
 		applied: firstIndex - 1,
 		stabled: lastIndex,
 		entries: entries,
+		// TODO project2C
+		pendingSnapshot: nil,
 		dummyIndex: firstIndex,
 	}
 

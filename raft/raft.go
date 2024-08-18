@@ -364,6 +364,8 @@ func (r *Raft) tick() {
 	case StateLeader:
 		r.heartbeatElapsed++
 		if r.heartbeatElapsed >= r.heartbeatTimeout {
+			// TODO judge usage. reset heartbeatElapsed
+			// r.heartbeatElapsed = 0
 			// leader该发送心跳包
 			r.Step(pb.Message{
 				MsgType: pb.MessageType_MsgBeat,
@@ -759,6 +761,11 @@ func (r *Raft) handleHeartBeatResponse(m pb.Message) {
 
 // handlePropose Leader 追加从上层应用接收到的新日志，并广播给 Follower
 func (r *Raft) handlePropose(m pb.Message) {
+	// leader 处于领导权禅让，停止接收新的请求
+	if r.leadTransferee != None {
+		return
+	}
+
 	for idx := range m.Entries {
 		// 设置新的日志的索引和日期
 		m.Entries[idx].Term = r.Term
@@ -769,11 +776,6 @@ func (r *Raft) handlePropose(m pb.Message) {
 		}
 	}
 	r.RaftLog.appendEntry(m.Entries)
-
-	// leader 处于领导权禅让，停止接收新的请求
-	if r.leadTransferee != None {
-		return
-	}
 
 	// 更新节点日志复制进度 Progress
 	r.Prs[r.id].Match = r.RaftLog.LastIndex()
@@ -897,6 +899,8 @@ func (r *Raft) handleAppendEntriesResponse(m pb.Message) {
 		}
 		return
 	}
+
+	// TODO 需不需要更新 Prs 字段的 match 和 next ？
 	// 同意同步
 	if r.Prs[m.From].handleUpdate(m.Index) {
 		// 更新了 Progress
@@ -952,6 +956,7 @@ func (r *Raft) handleHeartbeat(m pb.Message) {
 	} else {
 		// 成为发送心跳包的跟随者，信任其是 Leader
 		r.becomeFollower(m.Term, m.From)
+		// TODO：judge usage。重置 electionElapsed
 	}
 
 	r.msgs = append(r.msgs, message)

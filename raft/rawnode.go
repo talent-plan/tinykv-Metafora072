@@ -220,10 +220,11 @@ func (rn *RawNode) HasReady() bool {
 		hasReady = true
 	}
 
+	// TODO judge usage. needn't check this condition
 	// 检查 SoftState 是否有更新
-	if rn.isSoftStateUpdate() {
-		hasReady = true
-	}
+	//if rn.isSoftStateUpdate() {
+	//	hasReady = true
+	//}
 
 	// 有需要持久化的条目
 	if len(rn.Raft.RaftLog.unstableEntries()) > 0 {

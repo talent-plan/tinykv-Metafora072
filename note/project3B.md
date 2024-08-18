@@ -102,8 +102,6 @@
 4. 更新 metaStore 中的 region 信息
 5. 调用 removePeerCache 方法更新 peerCache
 
-
-
 处理完AddNode/RemoveNode之后，我们根据参考文档提示，调用 raft.RawNode 的 ApplyConfChange()，目的是更新 raft 层的配置信息。
 
 之后处理 proposal，即找到相应的回调，存入操作的执行结果（resp）。
@@ -173,24 +171,24 @@ d.Region().RegionEpoch.Version++
 
 ## 测试点反馈记录
 
-|   测试点类型   |                          测试点名称                          |         测试情况 / 30TESTS          |                  错误类型                  |
-| :------------: | :----------------------------------------------------------: | :---------------------------------: | :----------------------------------------: |
-| TransferLeader |                     TestTransferLeader3B                     | <font color=Green>**10PASS**</font> |                                            |
-|   ConfChange   |                    TestBasicConfChange3B                     | <font color=Green>**10PASS**</font> |                                            |
-|   ConfChange   |                 TestConfChangeRemoveLeader3B                 | <font color=Green>**10PASS**</font> |                                            |
-|   ConfChange   |                   TestConfChangeRecover3B                    | <font color=Green>**10PASS**</font> |                                            |
-|   ConfChange   |              TestConfChangeRecoverManyClients3B              | <font color=Green>**10PASS**</font> |                                            |
-|   ConfChange   |                  TestConfChangeUnreliable3B                  | <font color=Red>**0~2FAIL**</font>  |              request timeout               |
-|   ConfChange   |              TestConfChangeUnreliableRecover3B               | <font color=Red>**0~2FAIL**</font>  |              request timeout               |
-|   ConfChange   |          TestConfChangeSnapshotUnreliableRecover3B           | <font color=Red>**0~2FAIL**</font>  |              request timeout               |
-|   ConfChange   | TestConfChangeSnapshotUnreliableRecoverConcurrentPartition3B | <font color=Green>**10PASS**</font> |                                            |
-|     Split      |                        TestOneSplit3B                        | <font color=Green>**10PASS**</font> |                                            |
-|     Split      |                      TestSplitRecover3B                      | <font color=Green>**10PASS**</font> |                                            |
-|     Split      |                TestSplitRecoverManyClients3B                 |  <font color=Red>**10FAIL**</font>  |         test timed out after 10m0s         |
-|     Split      |                    TestSplitUnreliable3B                     |  <font color=Red>**1FAIL**</font>   |              request timeout               |
-|     Split      |                 TestSplitUnreliableRecover3B                 | <font color=Green>**30PASS**</font> |                                            |
-|     Split      |        TestSplitConfChangeSnapshotUnreliableRecover3B        |  <font color=Red>**2FAIL**</font>   |              request timeout               |
-|     Split      | TestSplitConfChangeSnapshotUnreliableRecoverConcurrentPartition3B | <font color=Green>**30PASS**</font> | request timeout       key is not in region |
+|   测试点类型   |                          测试点名称                          |         测试情况 / 30TESTS          |                 错误类型                  |                           调试记录                           |
+| :------------: | :----------------------------------------------------------: | :---------------------------------: | :---------------------------------------: | :----------------------------------------------------------: |
+| TransferLeader |                     TestTransferLeader3B                     | <font color=Green>**30PASS**</font> |                                           |                                                              |
+|   ConfChange   |                    TestBasicConfChange3B                     | <font color=Green>**30PASS**</font> |                                           |                                                              |
+|   ConfChange   |                 TestConfChangeRemoveLeader3B                 | <font color=Green>**30PASS**</font> |                                           |                                                              |
+|   ConfChange   |                   TestConfChangeRecover3B                    | <font color=Green>**30PASS**</font> |                                           |                                                              |
+|   ConfChange   |              TestConfChangeRecoverManyClients3B              | <font color=Green>**30PASS**</font> |                                           |                                                              |
+|   ConfChange   |                  TestConfChangeUnreliable3B                  | <font color=Green>**30PASS**</font> |              request timeout              | raft的handlePropose方法将leadTransferee判断提到方法开始处，解决 |
+|   ConfChange   |              TestConfChangeUnreliableRecover3B               | <font color=Green>**30PASS**</font> |              request timeout              | raft的handlePropose方法将leadTransferee判断提到方法开始处，解决 |
+|   ConfChange   |          TestConfChangeSnapshotUnreliableRecover3B           | <font color=Green>**30PASS**</font> |              request timeout              | raft的handlePropose方法将leadTransferee判断提到方法开始处，解决 |
+|   ConfChange   | TestConfChangeSnapshotUnreliableRecoverConcurrentPartition3B | <font color=Green>**30PASS**</font> |                                           |                                                              |
+|     Split      |                        TestOneSplit3B                        | <font color=Green>**30PASS**</font> |                                           |                                                              |
+|     Split      |                      TestSplitRecover3B                      | <font color=Green>**30PASS**</font> |                                           |                                                              |
+|     Split      |                TestSplitRecoverManyClients3B                 |  <font color=Red>**1FAIL**</font>   |        test timed out after 10m0s         | 在split的时候更新approximateSize和Sizediffhint这俩字段，FAIL率大大降低（10->1） |
+|     Split      |                    TestSplitUnreliable3B                     | <font color=Green>**30PASS**</font> |              request timeout              | raft的handlePropose方法将leadTransferee判断提到方法开始处，解决 |
+|     Split      |                 TestSplitUnreliableRecover3B                 | <font color=Green>**30PASS**</font> |                                           |   snap复制指针，split判断peer不相等，解决key not in region   |
+|     Split      |        TestSplitConfChangeSnapshotUnreliableRecover3B        |  <font color=Red>**2FAIL**</font>   | request timeout     & region is not split |                                                              |
+|     Split      | TestSplitConfChangeSnapshotUnreliableRecoverConcurrentPartition3B | <font color=Green>**30PASS**</font> |                                           |                                                              |
 
 ##  遇到的问题
 

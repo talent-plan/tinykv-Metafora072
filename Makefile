@@ -112,6 +112,20 @@ project2b:
 #	$(TEST_CLEAN)
 
 
+project2_multiTestsWithErrors:
+	$(TEST_CLEAN)
+	PASS_COUNT=0; \
+	for i in {1..30}; do \
+		RESULT=$$($(GOTEST) ./kv/test_raftstore -run ^$(TEST_NAME)$$ | grep -v "info" || true); \
+		echo "$$RESULT"; \
+		PASS_COUNT=$$(($$PASS_COUNT + $$(echo "$$RESULT" | grep -c "PASS"))); \
+	done; \
+	HALF_PASS_COUNT=$$(($$PASS_COUNT / 2)); \
+	GREEN='\033[0;32m'; \
+	NC='\033[0m'; \
+	echo -e "$$GREEN TOTAL tests: 30 $$NC"; \
+	echo -e "$$GREEN PASS  tests: $$HALF_PASS_COUNT $$NC"
+	$(TEST_CLEAN)
 
 project2c:
 	$(TEST_CLEAN)

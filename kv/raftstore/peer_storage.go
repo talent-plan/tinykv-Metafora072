@@ -406,7 +406,7 @@ func (ps *PeerStorage) SaveReadyState(ready *raft.Ready) (*ApplySnapResult, erro
 	var err error
 	var applySnapResult *ApplySnapResult
 	// 通过 raft.isEmptySnap() 方法判断是否存在 Snapshot，如果有，则调用ApplySnapshot() 方法应用；
-	// Snap TODO
+	// TODO apply snapshot
 	if raft.IsEmptySnap(&ready.Snapshot) == false {
 		kvWriteBatch := &engine_util.WriteBatch{}
 		applySnapResult,err = ps.ApplySnapshot(&ready.Snapshot,kvWriteBatch,writeBatch)
